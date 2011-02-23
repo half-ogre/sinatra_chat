@@ -1,0 +1,5 @@
+A chat room code sample for Sinatra, using EventMachine and fibers.
+
+to run
+$ sudo gem install bundler
+$ bundle exec ruby server.rb

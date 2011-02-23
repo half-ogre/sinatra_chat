@@ -1,0 +1,29 @@
+GEM
+  remote: http://rubygems.org/
+  specs:
+    daemons (1.1.0)
+    event_machine (0.2.0)
+    eventmachine (0.12.10)
+    haml (3.0.25)
+    rack (1.2.1)
+    rack-fiber_pool (0.9.1)
+    sass (3.1.0.alpha.221)
+    sinatra (1.1.3)
+      rack (~> 1.1)
+      tilt (>= 1.2.2, < 2.0)
+    thin (1.2.7)
+      daemons (>= 1.0.9)
+      eventmachine (>= 0.12.6)
+      rack (>= 1.0.0)
+    tilt (1.2.2)
+
+PLATFORMS
+  ruby
+
+DEPENDENCIES
+  event_machine
+  haml
+  rack-fiber_pool
+  sass
+  sinatra
+  thin
