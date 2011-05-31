@@ -1,6 +1,6 @@
 require 'eventmachine'
 require 'thin'
-require 'sinatra/base'
+require 'sinatra'
 require "json"
 require "rack/fiber_pool"
 require "fiber"
@@ -65,123 +65,121 @@ class Session
   end
 end
 
-EventMachine.run do  
-  class App < Sinatra::Base
-    $start_time = Time.new.to_i * 1000
-    $mem = `ps -o rss= -p #{Process.pid}`.to_i * 1024
-    $channel = Channel.new 
-    $sessions = {}
-    
-    CALLBACK_TIMEOUT = 30 * 1000
-    SESSION_TIMEOUT = 60 * 1000
-    
-    use Rack::FiberPool
-    
-    set :public, File.dirname(__FILE__) + '/public'
-    
-    helpers do
-      def create_session(nick)
-        return nil if nick.length > 50
-        return nil if !(/[^\w_\-^!]/ =~ nick).nil?
-        return nil if !$sessions.select { |id, session| session.nick == nick}.empty?
+$start_time = Time.new.to_i * 1000
+$mem = `ps -o rss= -p #{Process.pid}`.to_i * 1024
+$channel = Channel.new 
+$sessions = {}
 
-        session = Session.new(nick)
-        $sessions[session.id] = session;
-        session;
-      end
-      
-      def destroy_session(session)
+CALLBACK_TIMEOUT = 25
+SESSION_TIMEOUT = 60
+
+use Rack::FiberPool
+
+set :public, File.dirname(__FILE__) + '/public'
+
+helpers do
+  def create_session(nick)
+    return nil if nick.length > 50
+    return nil if !(/[^\w_\-^!]/ =~ nick).nil?
+    return nil if !$sessions.select { |id, session| session.nick == nick}.empty?
+
+    session = Session.new(nick)
+    $sessions[session.id] = session;
+    session;
+  end
+  
+  def json_error(error)
+    status 400
+    content_type :json
+    return error.to_json
+  end
+end
+
+get '/' do
+  redirect '/index.html'
+end
+
+get '/who' do
+  nicks = []
+  $sessions.each do |id, session|
+    nicks << session.nick
+  end
+  content_type :json
+  { :nicks => nicks, :rss => $mem }.to_json
+end
+
+get '/join' do
+  puts "/join"
+  nick = params[:nick]
+  return json_error({ :error => 'Bad nick.' }) if nick.empty?
+  session = create_session(nick)
+  return json_error({ :error => 'Nick in use' }) if session.nil?
+  $channel.append_message(session.nick, :join)
+  content_type :json
+  { :id => session.id, :nick => session.nick, :rss => $mem, :starttime => $start_time }.to_json
+end
+
+get '/part' do
+  id = params[:id]
+  session = $sessions[id]
+  destroy_session(session) if !session.nil?
+  content_type :json
+  { :rss => $mem }.to_json
+end
+
+get '/recv' do
+  puts '/recv'
+  since = params[:since]
+  return json_error({ :error => 'Must supply since parameter' }) if since.empty?
+  since = since.to_i
+  
+  id = params[:id]
+  session = $sessions[id]
+  
+  $channel.query(since, Proc.new {|messages| 
+    session.poke if !session.nil?
+    content_type :json
+    { :messages => messages, :rss => $mem }.to_json
+  })
+end
+
+get '/send' do
+  id, text = params[:id], params[:text]
+  return json_error({ :error => 'No such session id' }) if id.empty? || text.empty?
+  
+  session = $sessions[id]
+  return json_error({ :error => 'No such session id' }) if session.nil?
+
+  session.poke
+
+  $channel.append_message(session.nick, :msg, text)
+  content_type :json
+  { :rss => $mem }.to_json
+end
+
+EventMachine::next_tick {
+  EventMachine::add_periodic_timer(10) do
+    $mem = `ps -o rss= -p #{Process.pid}`.to_i * 1024
+  end
+}
+
+EventMachine::next_tick {
+  EventMachine::add_periodic_timer(3) do
+    now = Time.new
+    while !$channel.callbacks.empty? && now - $channel.callbacks[0][:timestamp] > CALLBACK_TIMEOUT
+      callback = $channel.callbacks.shift[:callback].call([])
+    end 
+  end
+}
+
+EventMachine::next_tick {
+  EventMachine::add_periodic_timer(1) do
+    now = Time.new
+    $sessions.each do |id, session|
+      if now - session.timestamp > SESSION_TIMEOUT
         $channel.append_message(session.nick, :part)
         $sessions.delete_if { |id, session| id == session.id }
       end
-      
-      def json_error(error)
-        status 400
-        content_type :json
-        return error.to_json
-      end
-    end
-    
-    get '/' do
-      redirect '/index.html'
-    end
-    
-    get '/who' do
-      nicks = []
-      $sessions.each do |id, session|
-        nicks << session.nick
-      end
-      content_type :json
-      { :nicks => nicks, :rss => $mem }.to_json
-    end
-    
-    get '/join' do
-      puts "/join"
-      nick = params[:nick]
-      return json_error({ :error => 'Bad nick.' }) if nick.empty?
-      session = create_session(nick)
-      return json_error({ :error => 'Nick in use' }) if session.nil?
-      $channel.append_message(session.nick, :join)
-      content_type :json
-      { :id => session.id, :nick => session.nick, :rss => $mem, :starttime => $start_time }.to_json
-    end
-    
-    get '/part' do
-      id = params[:id]
-      session = $sessions[id]
-      destroy_session(session) if !session.nil?
-      content_type :json
-      { :rss => $mem }.to_json
-    end
-
-    get '/recv' do
-      puts '/recv'
-      since = params[:since]
-      return json_error({ :error => 'Must supply since parameter' }) if since.empty?
-      since = since.to_i
-      
-      id = params[:id]
-      session = $sessions[id]
-      
-      $channel.query(since, Proc.new {|messages| 
-        session.poke if !session.nil?
-        content_type :json
-        { :messages => messages, :rss => $mem }.to_json
-      })
-    end
-    
-    get '/send' do
-      id, text = params[:id], params[:text]
-      return json_error({ :error => 'No such session id' }) if id.empty? || text.empty?
-      
-      session = $sessions[id]
-      return json_error({ :error => 'No such session id' }) if session.nil?
-
-      session.poke
-
-      $channel.append_message(session.nick, :msg, text)
-      content_type :json
-      { :rss => $mem }.to_json
-    end
-    
-    EventMachine::add_periodic_timer(10) do
-      $mem = `ps -o rss= -p #{Process.pid}`.to_i * 1024
-    end
-    
-    EventMachine::add_periodic_timer(3) do
-      now = Time.new
-      while !$channel.callbacks.empty? && now - $channel.callbacks[0][:timestamp] > CALLBACK_TIMEOUT
-        $channel.callbacks.shift[:callback].call([])
-      end 
-    end
-    
-    EventMachine::add_periodic_timer(1) do
-      now = Time.new
-      $sessions.each do |id, session|
-        destroy_session(session) if now - session.timestamp > SESSION_TIMEOUT
-      end
     end
   end
-  
-  Thin::Server.start App, '0.0.0.0', 8080
-end
+}
