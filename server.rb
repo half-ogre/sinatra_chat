@@ -1,3 +1,5 @@
+# BEFORE YOU FLAME: Yes, I know this isn't very Ruby-ish Ruby code. It's a port of ry's node_chat's server.js, changing as little as possible. This is, quite obviously, *not* how you would write a chat server from scratch in Ruby.
+
 require 'eventmachine'
 require 'thin'
 require 'sinatra'
@@ -124,7 +126,7 @@ get '/part' do
   session = $sessions[id]
   if !session.nil?
     $channel.append_message(session.nick, :part)
-    $sessions.delete_if { |id, session| id == session.id }
+    $sessions.delete_if { |id, s| id == session.id }
   end
   content_type :json
   { :rss => $mem }.to_json
@@ -170,7 +172,7 @@ EventMachine::next_tick {
   EventMachine::add_periodic_timer(3) do
     now = Time.new
     while !$channel.callbacks.empty? && now - $channel.callbacks[0][:timestamp] > CALLBACK_TIMEOUT
-      callback = $channel.callbacks.shift[:callback].call([])
+      $channel.callbacks.shift[:callback].call([])
     end 
   end
 }
