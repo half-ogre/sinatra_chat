@@ -1,6 +1,5 @@
 # BEFORE YOU FLAME: Yes, I know this isn't very Ruby-ish Ruby code. It's a port of ry's node_chat's server.js, changing as little as possible. This is, quite obviously, *not* how you would write a chat server from scratch in Ruby.
 
-require 'eventmachine'
 require 'thin'
 require 'sinatra'
 require "json"

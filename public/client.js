@@ -289,6 +289,7 @@ function longPoll (data) {
           if(!CONFIG.focus){
             CONFIG.unread++;
           }
+alert(message.timestamp);
           addMessage(message.nick, message.text, message.timestamp);
           break;
 
