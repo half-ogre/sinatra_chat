@@ -122,7 +122,10 @@ end
 get '/part' do
   id = params[:id]
   session = $sessions[id]
-  destroy_session(session) if !session.nil?
+  if !session.nil?
+    $channel.append_message(session.nick, :part)
+    $sessions.delete_if { |id, session| id == session.id }
+  end
   content_type :json
   { :rss => $mem }.to_json
 end
