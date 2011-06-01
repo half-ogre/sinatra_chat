@@ -200,7 +200,7 @@ function addMessage (from, text, time, _class) {
     time = new Date();
   } else if ((time instanceof Date) === false) {
     // if it's a timestamp, interpret it
-    time = new Date(time);
+    time = new Date(time * 1000);
   }
 
   //every message you see is actually a table with 3 cols:
